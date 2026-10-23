@@ -1,0 +1,35 @@
+# Production overlay for the chat agent — CONFIG ONLY.
+#   helm upgrade --install agent charts/agent -n urumi -f charts/agent/values-prod.yaml \
+#     --set gatewayApiKey=urumi_...   (a member-role key minted in the dashboard)
+
+image:
+  repository: registry.example.com/urumi/agent
+  pullPolicy: Always
+
+replicas: 2
+
+ingress:
+  host: agent.urumi.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    - hosts: [agent.urumi.example.com]
+      secretName: agent-tls
+
+llm:
+  # The agent is provider-agnostic. In prod there is no host.k3d.internal, so
+  # point it at a real LLM endpoint. Two common choices:
+  #   (a) an in-cluster Ollama Service, e.g. http://ollama.urumi:11434
+  #   (b) a managed provider — add that LlmProvider impl and set provider here.
+  provider: ollama
+  ollamaUrl: http://ollama.urumi:11434
+  ollamaModel: qwen2.5:7b
+
+gateway:
+  mcpUrl: http://gateway/mcp
+
+maxSteps: 6
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits:   { cpu: 500m, memory: 384Mi }

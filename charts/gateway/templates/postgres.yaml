@@ -1,0 +1,111 @@
+# The gateway's datastore: a single-replica Postgres with a persistent volume,
+# reachable only in-cluster (ClusterIP). Nothing outside the gateway talks to
+# it. For a local/dev platform one replica with a PVC is the right trade-off —
+# durable across pod restarts, simple to reason about.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "gateway.postgresName" . }}
+  labels:
+    {{- include "gateway.postgresLabels" . | nindent 4 }}
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: {{ include "gateway.postgresPassword" . | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "gateway.postgresName" . }}
+  labels:
+    {{- include "gateway.postgresLabels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.postgres.storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.postgresName" . }}
+  labels:
+    {{- include "gateway.postgresLabels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # Recreate (not RollingUpdate): a single RWO PVC can't be mounted by two pods
+  # at once, so the old pod must terminate before the new one starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "gateway.postgresName" . }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway.postgresLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999          # postgres user in the official image
+        fsGroup: 999            # so the mounted PVC is group-writable
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image | quote }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gateway.postgresName" . }}
+                  key: POSTGRES_PASSWORD
+            # Keep PGDATA in a subdirectory of the mount: the lost+found entry at
+            # a volume root otherwise makes Postgres refuse to initialise.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+              name: postgres
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "gateway.postgresName" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gateway.postgresName" . }}
+  labels:
+    {{- include "gateway.postgresLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ include "gateway.postgresName" . }}
+  ports:
+    - port: 5432
+      targetPort: postgres
+      name: postgres

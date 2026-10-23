@@ -1,0 +1,163 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "store.fullname" . }}-setup
+  labels:
+    {{- include "store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: setup
+  annotations:
+    # Run after the main resources are applied, and re-run on every upgrade.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        {{- include "store.labels" . | nindent 8 }}
+        app.kubernetes.io/component: setup
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      securityContext:
+        runAsUser: 33     # www-data, matches the WordPress file owner
+        runAsGroup: 33
+        fsGroup: 33
+      containers:
+        - name: wp-cli
+          image: {{ .Values.image.wordpressCli }}
+          env:
+            # www-data (uid 33) has no writable HOME; point wp-cli's cache at /tmp.
+            - name: HOME
+              value: /tmp
+            - name: WP_CLI_CACHE_DIR
+              value: /tmp/.wp-cli-cache
+            # wp-cli reads wp-config.php, which resolves DB settings via
+            # getenv_docker(...). Those vars live in the wordpress container's
+            # env, so the Job must supply the same ones or it falls back to the
+            # image default host "mysql".
+            - name: WORDPRESS_DB_HOST
+              value: {{ include "store.dbHost" . }}
+            - name: WORDPRESS_DB_NAME
+              valueFrom: { secretKeyRef: { name: {{ include "store.fullname" . }}-secret, key: MYSQL_DATABASE } }
+            - name: WORDPRESS_DB_USER
+              valueFrom: { secretKeyRef: { name: {{ include "store.fullname" . }}-secret, key: MYSQL_USER } }
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "store.fullname" . }}-secret, key: MYSQL_PASSWORD } }
+            - name: WP_URL
+              value: "http://{{ .Values.ingress.host }}:8080"
+            - name: WP_TITLE
+              value: {{ .Values.storeName | quote }}
+            - name: WP_ADMIN_USER
+              valueFrom: { secretKeyRef: { name: {{ include "store.fullname" . }}-secret, key: WP_ADMIN_USER } }
+            - name: WP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "store.fullname" . }}-secret, key: WP_ADMIN_PASSWORD } }
+            - name: WP_ADMIN_EMAIL
+              valueFrom: { secretKeyRef: { name: {{ include "store.fullname" . }}-secret, key: WP_ADMIN_EMAIL } }
+            - name: WOO_CONSUMER_KEY
+              valueFrom: { secretKeyRef: { name: {{ include "store.fullname" . }}-secret, key: WOO_CONSUMER_KEY } }
+            - name: WOO_CONSUMER_SECRET
+              valueFrom: { secretKeyRef: { name: {{ include "store.fullname" . }}-secret, key: WOO_CONSUMER_SECRET } }
+          volumeMounts:
+            - name: html
+              mountPath: /var/www/html
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "==> Waiting for WordPress core files (populated by the wordpress pod)..."
+              for i in $(seq 1 60); do
+                [ -f /var/www/html/wp-load.php ] && break
+                echo "   wp-load.php not present yet ($i)"; sleep 5
+              done
+              [ -f /var/www/html/wp-load.php ] || { echo "FATAL: WordPress core never appeared"; exit 1; }
+
+              echo "==> Waiting for the database to accept the WordPress install..."
+              for i in $(seq 1 60); do
+                if wp core is-installed --path=/var/www/html 2>/dev/null; then
+                  echo "   WordPress already installed"; break
+                fi
+                if wp core install --path=/var/www/html \
+                     --url="$WP_URL" --title="$WP_TITLE" \
+                     --admin_user="$WP_ADMIN_USER" --admin_password="$WP_ADMIN_PASSWORD" \
+                     --admin_email="$WP_ADMIN_EMAIL" --skip-email 2>/dev/null; then
+                  echo "   WordPress installed"; break
+                fi
+                echo "   db not ready yet ($i)"; sleep 5
+              done
+              wp core is-installed --path=/var/www/html || { echo "FATAL: WP install failed"; exit 1; }
+
+              echo "==> Ensuring site URL is correct"
+              wp option update home "$WP_URL" --path=/var/www/html
+              wp option update siteurl "$WP_URL" --path=/var/www/html
+
+              echo "==> Installing mu-plugin so internal REST calls authenticate over plain HTTP"
+              # In-cluster traffic has no TLS, but WooCommerce only accepts
+              # key/secret auth when is_ssl() is true (otherwise it demands
+              # OAuth 1.0a). The gateway/MCP server calls this store over the
+              # internal network with "X-Forwarded-Proto: https"; this drop-in
+              # honours that header so simple key/secret auth works internally.
+              mkdir -p /var/www/html/wp-content/mu-plugins
+              cat > /var/www/html/wp-content/mu-plugins/urumi-ssl-proxy.php <<'PHP'
+              <?php
+              /* Urumi: honour X-Forwarded-Proto for internal callers. */
+              if ( isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && 'https' === $_SERVER['HTTP_X_FORWARDED_PROTO'] ) {
+                  $_SERVER['HTTPS'] = 'on';
+              }
+              PHP
+
+              echo "==> Installing + activating WooCommerce"
+              wp plugin is-installed woocommerce --path=/var/www/html || \
+                wp plugin install woocommerce --activate --path=/var/www/html
+              wp plugin activate woocommerce --path=/var/www/html || true
+
+              echo "==> Pretty permalinks (required for REST API routes)"
+              wp rewrite structure '/%postname%/' --hard --path=/var/www/html
+              wp rewrite flush --hard --path=/var/www/html
+
+              echo "==> Baseline WooCommerce settings + enable Cash on Delivery"
+              wp option update woocommerce_currency "USD" --path=/var/www/html
+              wp option update woocommerce_default_country "US:CA" --path=/var/www/html
+              wp option update woocommerce_cod_settings \
+                '{"enabled":"yes","title":"Cash on delivery","description":"Pay on delivery."}' \
+                --format=json --path=/var/www/html
+              # skip the onboarding wizard
+              wp option update woocommerce_onboarding_profile '{"skipped":true}' --format=json --path=/var/www/html
+
+              echo "==> Registering WooCommerce REST API key for the MCP server"
+              wp eval '
+                $ck = getenv("WOO_CONSUMER_KEY"); $cs = getenv("WOO_CONSUMER_SECRET");
+                global $wpdb; $t = $wpdb->prefix . "woocommerce_api_keys";
+                $hash = wc_api_hash($ck);
+                $exists = $wpdb->get_var($wpdb->prepare("SELECT key_id FROM {$t} WHERE consumer_key=%s", $hash));
+                if (!$exists) {
+                  $wpdb->insert($t, array(
+                    "user_id"=>1, "description"=>"urumi-mcp", "permissions"=>"read_write",
+                    "consumer_key"=>$hash, "consumer_secret"=>$cs, "truncated_key"=>substr($ck,-7),
+                  ));
+                  echo "registered\n";
+                } else { echo "already registered\n"; }
+              ' --path=/var/www/html
+
+              echo "==> Seeding a sample product if the catalog is empty"
+              COUNT=$(wp wc product list --user="$WP_ADMIN_USER" --format=count --path=/var/www/html 2>/dev/null || echo 0)
+              if [ "$COUNT" = "0" ]; then
+                wp wc product create --user="$WP_ADMIN_USER" --path=/var/www/html \
+                  --name="Demo Widget" --type=simple --regular_price="19.99" \
+                  --status=publish --description="A sample product seeded by the store setup job."
+                echo "   seeded Demo Widget"
+              else
+                echo "   catalog already has $COUNT product(s)"
+              fi
+
+              echo "==> Store setup complete."
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 384Mi }
+      volumes:
+        - name: html
+          persistentVolumeClaim:
+            claimName: {{ include "store.fullname" . }}-wordpress

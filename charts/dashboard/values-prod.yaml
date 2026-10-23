@@ -1,0 +1,20 @@
+# Production overlay for the dashboard — CONFIG ONLY.
+#   helm upgrade --install dashboard charts/dashboard -n urumi -f charts/dashboard/values-prod.yaml
+
+image:
+  repository: registry.example.com/urumi/dashboard
+  pullPolicy: Always
+
+replicas: 2
+
+ingress:
+  host: dashboard.urumi.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    - hosts: [dashboard.urumi.example.com]
+      secretName: dashboard-tls
+
+resources:
+  requests: { cpu: 25m, memory: 48Mi }
+  limits:   { cpu: 300m, memory: 192Mi }

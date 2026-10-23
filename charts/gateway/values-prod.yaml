@@ -1,0 +1,42 @@
+# Production overlay for the gateway — CONFIG ONLY. The chart templates are
+# byte-for-byte the same as local; production differs only in these values.
+#   helm upgrade --install gateway charts/gateway -n urumi -f charts/gateway/values-prod.yaml \
+#     --set postgres.password=... (or let the Secret lookup keep the existing one)
+#
+# Prereqs on the prod k3s: a container registry the nodes can pull from, and
+# cert-manager with a "letsencrypt-prod" ClusterIssuer for Traefik TLS.
+
+image:
+  repository: registry.example.com/urumi/gateway   # real registry, not a local import
+  pullPolicy: Always
+
+# Stateless data plane → run 2 replicas behind the Service for availability.
+# (The one-time bootstrap admin key is a first-install concern; mint real keys
+#  via the dashboard and revoke the bootstrap key afterwards.)
+replicas: 2
+
+ingress:
+  host: gateway.urumi.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    - hosts: [gateway.urumi.example.com]
+      secretName: gateway-tls
+
+# Prod federates the real store MCP server. utils_a/utils_b are local demo
+# upstreams and are intentionally omitted here.
+upstreams:
+  - name: woo_default
+    url: http://woo-mcp-default/mcp
+
+upstreamTimeoutMs: 15000
+
+postgres:
+  storage: 10Gi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+
+resources:
+  requests: { cpu: 100m, memory: 192Mi }
+  limits:   { cpu: 500m, memory: 512Mi }

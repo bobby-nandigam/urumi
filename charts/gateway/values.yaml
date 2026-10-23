@@ -1,0 +1,48 @@
+image:
+  repository: urumi/gateway
+  tag: "0.1.2"
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+service:
+  port: 80
+
+# Exposed so external MCP clients (Claude Desktop) and the dashboard can reach
+# the gateway at gateway.urumi.localhost:8080 via Traefik. The /mcp endpoint is
+# still authenticated — Ingress only routes, it does not grant access.
+ingress:
+  enabled: true
+  className: traefik
+  host: gateway.urumi.localhost
+
+# Upstream MCP servers this gateway federates. Each tool is exposed downstream
+# as "<name>__<tool>". utils_a and utils_b are two IDENTICAL servers — their
+# tool names (current_time, echo) collide, and namespacing is what disambiguates
+# them (utils_a__current_time vs utils_b__current_time).
+upstreams:
+  - name: woo_default
+    url: http://woo-mcp-default/mcp
+  - name: utils_a
+    url: http://utils-mcp-a/mcp
+  - name: utils_b
+    url: http://utils-mcp-b/mcp
+
+# Per-call timeout when forwarding to an upstream (slow/dead-upstream guard).
+upstreamTimeoutMs: 15000
+
+# Name recorded for the admin key auto-minted on first boot (printed once).
+bootstrapKeyName: bootstrap-admin
+
+postgres:
+  image: postgres:16-alpine
+  database: urumi
+  user: urumi
+  storage: 1Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+resources:
+  requests: { cpu: 50m, memory: 96Mi }
+  limits:   { cpu: 300m, memory: 256Mi }

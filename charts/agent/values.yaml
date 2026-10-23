@@ -1,0 +1,38 @@
+image:
+  repository: urumi/agent
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+service:
+  port: 80
+
+# Chat UI at http://agent.urumi.localhost:8080 via Traefik.
+ingress:
+  enabled: true
+  className: traefik
+  host: agent.urumi.localhost
+
+llm:
+  provider: ollama
+  # Ollama runs on the developer's Mac; k3d injects host.k3d.internal into
+  # CoreDNS so in-cluster pods can reach the host. In prod this points at
+  # whatever LLM endpoint the environment provides (values-prod.yaml).
+  ollamaUrl: http://host.k3d.internal:11434
+  ollamaModel: qwen2.5:3b
+
+gateway:
+  # The gateway's MCP data-plane endpoint (in-cluster Service).
+  mcpUrl: http://gateway/mcp
+
+# REQUIRED: a member-role gateway API key, minted in the dashboard. Passed at
+# install time (`--set gatewayApiKey=urumi_...`); stored only in a Secret.
+gatewayApiKey: ""
+
+# Max tool-call rounds per message before the loop stops.
+maxSteps: 6
+
+resources:
+  requests: { cpu: 25m, memory: 64Mi }
+  limits:   { cpu: 200m, memory: 192Mi }

@@ -1,0 +1,37 @@
+# Production overlay for the store — CONFIG ONLY. Secrets here are PLACEHOLDERS;
+# supply real values via --set or a sealed secret, and never commit them.
+#   helm upgrade --install store-default charts/store -n urumi -f charts/store/values-prod.yaml \
+#     --set wordpress.adminPassword=... --set database.password=... \
+#     --set database.rootPassword=... \
+#     --set wooApi.consumerKey=ck_... --set wooApi.consumerSecret=cs_...
+
+storeName: "Urumi Store"
+
+image:
+  wordpress: wordpress:7.1.3-php8.3-apache
+  wordpressCli: wordpress:cli-php8.3
+  mariadb: mariadb:11.4
+
+ingress:
+  host: store.urumi.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    - hosts: [store.urumi.example.com]
+      secretName: store-tls
+
+persistence:
+  wordpress:
+    size: 20Gi
+    storageClass: local-path
+  mariadb:
+    size: 20Gi
+    storageClass: local-path
+
+resources:
+  wordpress:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+  mariadb:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "1", memory: 1Gi }

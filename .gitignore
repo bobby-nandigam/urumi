@@ -1,0 +1,23 @@
+# deps
+node_modules/
+*/node_modules/
+dist/
+build/
+.vite/
+
+# env & secrets (never commit real secrets)
+.env
+.env.*
+!.env.example
+*.local.secret.yaml
+
+# logs
+*.log
+npm-debug.log*
+
+# os
+.DS_Store
+
+# k8s / helm
+charts/**/charts/
+*.tgz

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: utils-mcp
+description: Tiny generic MCP server (current_time, echo). Deployed per-instance to demo gateway federation + namespacing.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

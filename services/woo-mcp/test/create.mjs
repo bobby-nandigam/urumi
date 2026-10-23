@@ -1,0 +1,12 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+const t = new StreamableHTTPClientTransport(new URL("http://localhost:8787/mcp"));
+const c = new Client({ name: "create-test", version: "0.0.1" });
+await c.connect(t);
+const r = await c.callTool({ name: "create_product", arguments: { name: "MCP Test Mug", regular_price: "12.50", description: "Created via the WooCommerce MCP server." } });
+const p = JSON.parse(r.content[0].text);
+console.log(`created product id=${p.id} name="${p.name}" price=$${p.price} status=${p.status}`);
+const list = await c.callTool({ name: "list_products", arguments: { per_page: 20 } });
+const all = JSON.parse(list.content[0].text);
+console.log("catalog now:", all.map(x => `${x.name}($${x.price})`).join(", "));
+await c.close();

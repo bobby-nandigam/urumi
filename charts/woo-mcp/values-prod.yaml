@@ -1,0 +1,16 @@
+# Production overlay for the WooCommerce MCP server — CONFIG ONLY. It is
+# internal (ClusterIP, no ingress), so prod differs only in image source and
+# capacity. The store wiring (service host, canonical host, credentials Secret)
+# is unchanged from the base values.
+#   helm upgrade --install woo-mcp-default charts/woo-mcp -n urumi -f charts/woo-mcp/values-prod.yaml
+
+image:
+  repository: registry.example.com/urumi/woo-mcp
+  tag: "0.1.1"
+  pullPolicy: Always
+
+replicas: 2
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits:   { cpu: 500m, memory: 256Mi }

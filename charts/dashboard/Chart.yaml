@@ -1,0 +1,6 @@
+apiVersion: v2
+name: dashboard
+description: React dashboard for the Urumi MCP gateway. nginx serves the SPA and reverse-proxies /api to the gateway.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

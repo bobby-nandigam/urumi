@@ -1,0 +1,28 @@
+# Which store this MCP server fronts. Tool names are plain (list_products, ...);
+# the GATEWAY namespaces them per registered server to resolve collisions.
+storeId: default
+
+image:
+  repository: urumi/woo-mcp
+  tag: "0.1.1"
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+# How the MCP server reaches the store.
+store:
+  # internal Service of the WordPress pod (see the store chart)
+  serviceHost: store-default-wordpress
+  servicePort: 80
+  # canonical Host header to avoid WordPress canonical redirects (matches siteurl)
+  canonicalHost: store.urumi.localhost:8080
+  # Secret (created by the store chart) holding WOO_CONSUMER_KEY / WOO_CONSUMER_SECRET
+  credentialsSecret: store-default-secret
+
+service:
+  port: 80
+  targetPort: 8080
+
+resources:
+  requests: { cpu: 50m, memory: 96Mi }
+  limits:   { cpu: 300m, memory: 256Mi }

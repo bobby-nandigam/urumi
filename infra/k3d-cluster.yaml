@@ -1,0 +1,25 @@
+# k3d cluster config for local development.
+# k3d runs k3s inside Docker, so this local cluster uses the SAME distro
+# as the production VPS target (k3s). That makes "same Helm charts, config-only
+# differences" honest: Traefik ingress, local-path storage, etc. all match.
+#
+# Create with:   k3d cluster create --config infra/k3d-cluster.yaml
+#
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: urumi
+servers: 1
+agents: 1
+ports:
+  # Map host :8080 -> Traefik (the k3s built-in ingress controller) on the
+  # loadbalancer node. We reach every Ingress host through http://...:8080.
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer
+options:
+  k3s:
+    nodeLabels:
+      - label: ingress-ready=true
+        nodeFilters:
+          - server:0
