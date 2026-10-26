@@ -14,6 +14,7 @@ spec:
       labels:
         {{- include "gateway.labels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ include "gateway.fullname" . }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

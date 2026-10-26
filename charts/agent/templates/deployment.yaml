@@ -1,6 +1,7 @@
-# The agent's gateway credential — a member-role API key minted in the
-# dashboard and passed at install (`--set gatewayApiKey=...`). It lives only in
-# this Secret; the agent reads it as GATEWAY_API_KEY.
+# The agent's own Secret holds only the Cloudflare token. Its GATEWAY_API_KEY is
+# NOT set here — it is read from the "gateway-admin" Secret that the gateway
+# writes on first boot (key AGENT_API_KEY), so the gateway API key is applied
+# automatically with no copy-paste and no --set.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -9,7 +10,6 @@ metadata:
     {{- include "agent.labels" . | nindent 4 }}
 type: Opaque
 stringData:
-  GATEWAY_API_KEY: {{ required "gatewayApiKey is required (a member-role gateway API key)" .Values.gatewayApiKey | quote }}
   # Cloudflare API token (only used when llm.provider=cloudflare); empty otherwise.
   CF_API_TOKEN: {{ .Values.llm.cloudflare.apiToken | default "" | quote }}
 ---
@@ -65,11 +65,13 @@ spec:
               value: {{ .Values.maxSteps | quote }}
             - name: GATEWAY_MCP_URL
               value: {{ .Values.gateway.mcpUrl | quote }}
+            # Read from the gateway-written Secret, not the agent's own —
+            # applied automatically, never copy-pasted.
             - name: GATEWAY_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "agent.fullname" . }}
-                  key: GATEWAY_API_KEY
+                  name: {{ .Values.gatewayKeySecret.name }}
+                  key: {{ .Values.gatewayKeySecret.key }}
           ports:
             - containerPort: 8080
               name: http

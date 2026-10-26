@@ -34,9 +34,12 @@ gateway:
   # The gateway's MCP data-plane endpoint (in-cluster Service).
   mcpUrl: http://gateway/mcp
 
-# REQUIRED: a member-role gateway API key, minted in the dashboard. Passed at
-# install time (`--set gatewayApiKey=urumi_...`); stored only in a Secret.
-gatewayApiKey: ""
+# Where the agent reads its gateway API key from. The gateway writes this Secret
+# on first boot (a member-role key), so the key is applied automatically — no
+# --set, no copy-paste. Point elsewhere only for an externally-managed key.
+gatewayKeySecret:
+  name: gateway-admin
+  key: AGENT_API_KEY
 
 # Max tool-call rounds per message before the loop stops.
 maxSteps: 6

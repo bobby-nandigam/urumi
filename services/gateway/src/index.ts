@@ -9,6 +9,7 @@ import { createPool, initSchema } from "./db.js";
 import { verifyApiKey, createApiKey, countActiveKeys } from "./apikeys.js";
 import { UpstreamManager } from "./upstreams.js";
 import { seedUpstreams, listStoredUpstreams } from "./upstream-store.js";
+import { upsertSecret } from "./k8s.js";
 import { buildGatewayServer } from "./mcp.js";
 import { buildDashboardRouter } from "./dashboard.js";
 
@@ -17,16 +18,28 @@ async function main() {
   const pool = createPool(config.databaseUrl);
   await initSchema(pool);
 
-  // First-boot bootstrap: if there are no keys at all, mint one admin key and
-  // print it once. That key is how an operator first reaches the dashboard to
-  // create the rest; the plaintext is never stored and never shown again.
+  // First-boot bootstrap: if there are no keys at all, mint the admin key AND a
+  // member key for the chat agent, and write both to a Kubernetes Secret
+  // ("gateway-admin"). The agent reads its key from that Secret, so the gateway
+  // API key is applied automatically — no operator copy-paste. We still log the
+  // admin key for first dashboard login (also retrievable from the Secret).
   if ((await countActiveKeys(pool)) === 0) {
-    const { plaintext } = await createApiKey(pool, config.bootstrapKeyName, "admin");
+    const admin = await createApiKey(pool, config.bootstrapKeyName, "admin");
+    const agent = await createApiKey(pool, "chat-agent", "member");
+    try {
+      await upsertSecret("gateway-admin", {
+        ADMIN_API_KEY: admin.plaintext,
+        AGENT_API_KEY: agent.plaintext,
+      });
+    } catch (err) {
+      console.error("Could not write bootstrap Secret (keys still valid):", (err as Error).message);
+    }
     console.log(
       `\n${"=".repeat(68)}\n` +
-      `  BOOTSTRAP ADMIN KEY (shown ONCE — copy it now):\n` +
-      `    ${plaintext}\n` +
-      `  Use it as a Bearer token for /api/* and /mcp.\n` +
+      `  BOOTSTRAP KEYS minted and written to Secret "gateway-admin".\n` +
+      `  Admin key (dashboard login):\n    ${admin.plaintext}\n` +
+      `  Retrieve later with:\n` +
+      `    kubectl get secret gateway-admin -n <ns> -o jsonpath='{.data.ADMIN_API_KEY}' | base64 -d\n` +
       `${"=".repeat(68)}\n`,
     );
   }

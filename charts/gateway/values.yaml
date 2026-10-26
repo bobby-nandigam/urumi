@@ -1,6 +1,6 @@
 image:
   repository: urumi/gateway
-  tag: "0.1.2"
+  tag: "0.1.3"
   pullPolicy: IfNotPresent
 
 replicas: 1
