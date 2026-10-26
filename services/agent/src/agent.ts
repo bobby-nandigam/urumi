@@ -52,7 +52,9 @@ export async function runAgent(
     for (const call of resp.toolCalls) {
       const result = await gateway.callTool(call.name, call.arguments);
       steps.push({ name: call.name, arguments: call.arguments, result });
-      messages.push({ role: "tool", content: result, toolName: call.name });
+      // toolName pairs the result for Ollama; toolCallId pairs it for the
+      // OpenAI-family (Cloudflare) wire format.
+      messages.push({ role: "tool", content: result, toolName: call.name, toolCallId: call.id });
     }
   }
 

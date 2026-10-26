@@ -15,12 +15,18 @@ ingress:
   host: agent.urumi.localhost
 
 llm:
+  # "ollama" (local/self-hosted) or "cloudflare" (hosted Workers AI, free tier).
   provider: ollama
   # Ollama runs on the developer's Mac; k3d injects host.k3d.internal into
-  # CoreDNS so in-cluster pods can reach the host. In prod this points at
-  # whatever LLM endpoint the environment provides (values-prod.yaml).
+  # CoreDNS so in-cluster pods can reach the host.
   ollamaUrl: http://host.k3d.internal:11434
   ollamaModel: qwen2.5:3b
+  # Cloudflare Workers AI — a free, hosted LLM reachable from anywhere (incl. a
+  # VPS). Set provider=cloudflare and supply accountId + apiToken at install.
+  cloudflare:
+    accountId: ""
+    apiToken: ""           # stored only in the agent Secret; never commit a real one
+    model: "@cf/zai-org/glm-4.7-flash"   # Cloudflare's recommended fast tool-calling model
 
 gateway:
   # The gateway's MCP data-plane endpoint (in-cluster Service).

@@ -10,6 +10,8 @@ metadata:
 type: Opaque
 stringData:
   GATEWAY_API_KEY: {{ required "gatewayApiKey is required (a member-role gateway API key)" .Values.gatewayApiKey | quote }}
+  # Cloudflare API token (only used when llm.provider=cloudflare); empty otherwise.
+  CF_API_TOKEN: {{ .Values.llm.cloudflare.apiToken | default "" | quote }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -50,6 +52,15 @@ spec:
               value: {{ .Values.llm.ollamaUrl | quote }}
             - name: OLLAMA_MODEL
               value: {{ .Values.llm.ollamaModel | quote }}
+            - name: CF_ACCOUNT_ID
+              value: {{ .Values.llm.cloudflare.accountId | quote }}
+            - name: CF_MODEL
+              value: {{ .Values.llm.cloudflare.model | quote }}
+            - name: CF_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agent.fullname" . }}
+                  key: CF_API_TOKEN
             - name: MAX_STEPS
               value: {{ .Values.maxSteps | quote }}
             - name: GATEWAY_MCP_URL

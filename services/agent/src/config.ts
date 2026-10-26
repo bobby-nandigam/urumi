@@ -5,12 +5,19 @@
 // interface. Today we ship an Ollama provider; a Gemini/Anthropic one would be
 // a drop-in with no change to the tool loop.
 
+export type Provider = "ollama" | "cloudflare";
+
 export interface Config {
   port: number;
   /** Which LLM backend to use. */
-  provider: "ollama";
+  provider: Provider;
+  // Ollama (local / self-hosted).
   ollamaUrl: string;
   ollamaModel: string;
+  // Cloudflare Workers AI (hosted, free tier). OpenAI-compatible endpoint.
+  cfAccountId: string;
+  cfApiToken: string;
+  cfModel: string;
   /** The gateway's MCP endpoint (data plane). */
   gatewayMcpUrl: string;
   /** Member-role API key the agent uses to authenticate to the gateway. */
@@ -28,9 +35,12 @@ function requireEnv(name: string): string {
 export function loadConfig(): Config {
   return {
     port: Number(process.env.PORT ?? 8080),
-    provider: (process.env.LLM_PROVIDER ?? "ollama") as "ollama",
+    provider: (process.env.LLM_PROVIDER ?? "ollama") as Provider,
     ollamaUrl: process.env.OLLAMA_URL ?? "http://host.k3d.internal:11434",
     ollamaModel: process.env.OLLAMA_MODEL ?? "qwen2.5:3b",
+    cfAccountId: process.env.CF_ACCOUNT_ID ?? "",
+    cfApiToken: process.env.CF_API_TOKEN ?? "",
+    cfModel: process.env.CF_MODEL ?? "@cf/zai-org/glm-4.7-flash",
     gatewayMcpUrl: process.env.GATEWAY_MCP_URL ?? "http://gateway/mcp",
     gatewayApiKey: requireEnv("GATEWAY_API_KEY"),
     maxSteps: Number(process.env.MAX_STEPS ?? 6),

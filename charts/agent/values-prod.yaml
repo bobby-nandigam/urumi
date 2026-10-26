@@ -17,13 +17,12 @@ ingress:
       secretName: agent-tls
 
 llm:
-  # The agent is provider-agnostic. In prod there is no host.k3d.internal, so
-  # point it at a real LLM endpoint. Two common choices:
-  #   (a) an in-cluster Ollama Service, e.g. http://ollama.urumi:11434
-  #   (b) a managed provider — add that LlmProvider impl and set provider here.
-  provider: ollama
-  ollamaUrl: http://ollama.urumi:11434
-  ollamaModel: qwen2.5:7b
+  # Prod uses Cloudflare Workers AI — a hosted, free-tier LLM reachable from the
+  # VPS with no local Ollama. Supply the token at install:
+  #   --set llm.cloudflare.accountId=<id> --set llm.cloudflare.apiToken=<token>
+  provider: cloudflare
+  cloudflare:
+    model: "@cf/zai-org/glm-4.7-flash"
 
 gateway:
   mcpUrl: http://gateway/mcp
